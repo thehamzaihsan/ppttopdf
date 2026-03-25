@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Package/Dependency Directories
+__pypackages__/
+.venv/
+venv/
+env/
+ENV/
+
+# Flatpak Build Directories
+.flatpak-builder/
+build-dir/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Application specific data (Optional but recommended so you don't commit test convert files)
+# *.pdf
+# *.ppt
+# *.pptx
