@@ -1,4 +1,4 @@
-# PPT to PDF Converter
+# <img src="com.github.hamzaihsan.PPT2PDF.svg" width="48" height="48" align="absmiddle"> PPT to PDF Converter
 
 A modern, fast, and robust batch converter that transforms PowerPoint presentations (`.ppt`, `.pptx`) into high-quality, text-based PDF files. 
 
