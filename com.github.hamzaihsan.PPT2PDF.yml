@@ -1,0 +1,33 @@
+app-id: com.github.hamzaihsan.PPT2PDF
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+command: ppt2pdf-gtk
+finish-args:
+  # UI
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Network (not necessarily needed, but standard)
+  - --share=network
+  # Filesystem access for inputs/outputs
+  - --filesystem=host
+  # Required to use LibreOffice from the host via flatpak-spawn
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  - name: ppt2pdf
+    buildsystem: simple
+    build-commands:
+      # Install the python script
+      - install -Dm755 ppt2pdf-gtk.py /app/bin/ppt2pdf-gtk
+      # Install desktop file
+      - install -Dm644 com.github.hamzaihsan.PPT2PDF.desktop /app/share/applications/com.github.hamzaihsan.PPT2PDF.desktop
+      # Install icon
+      - install -Dm644 com.github.hamzaihsan.PPT2PDF.svg /app/share/icons/hicolor/scalable/apps/com.github.hamzaihsan.PPT2PDF.svg
+    sources:
+      - type: file
+        path: ppt2pdf-gtk.py
+      - type: file
+        path: com.github.hamzaihsan.PPT2PDF.desktop
+      - type: file
+        path: com.github.hamzaihsan.PPT2PDF.svg

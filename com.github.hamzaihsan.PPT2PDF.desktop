@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=PPT to PDF
+GenericName=Presentation Converter
+Comment=Convert PowerPoint presentations to PDF files
+Keywords=ppt;pptx;pdf;convert;office;
+Exec=ppt2pdf-gtk
+Icon=com.github.hamzaihsan.PPT2PDF
+Terminal=false
+Type=Application
+Categories=Office;Utility;
+StartupNotify=true

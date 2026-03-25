@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Background Gradient for PPT (Orange to Red) -->
+    <linearGradient id="ppt-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7043"/>
+      <stop offset="100%" stop-color="#D84315"/>
+    </linearGradient>
+    
+    <!-- Background Gradient for PDF (Red to Dark Red) -->
+    <linearGradient id="pdf-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF5350"/>
+      <stop offset="100%" stop-color="#C62828"/>
+    </linearGradient>
+
+    <!-- Drop Shadow -->
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Base Document Shape -->
+  <rect x="16" y="16" width="96" height="96" rx="20" fill="url(#ppt-grad)" filter="url(#shadow)"/>
+  
+  <!-- Folded Corner Effect Geometry -->
+  <polygon points="112,16 112,40 88,16" fill="#FBE9E7" opacity="0.8"/>
+  <rect x="16" y="16" width="96" height="96" rx="20" fill="none" stroke="#FFFFFF" stroke-width="2" opacity="0.3"/>
+
+  <!-- Left Side: Pie Chart / Presentation Symbol -->
+  <circle cx="50" cy="50" r="16" fill="none" stroke="#FFFFFF" stroke-width="6"/>
+  <path d="M 50 34 A 16 16 0 0 1 66 50 L 50 50 Z" fill="#FFFFFF"/>
+
+  <!-- Right Side: PDF Text or Document Symbol -->
+  <rect x="36" y="80" width="56" height="8" rx="4" fill="#FFFFFF"/>
+  <rect x="36" y="96" width="36" height="8" rx="4" fill="#FFFFFF"/>
+
+  <!-- Center Arrow -->
+  <path d="M 64 68 L 76 60 L 64 52 Z" fill="#FFFFFF"/>
+  <rect x="52" y="56" width="12" height="8" fill="#FFFFFF"/>
+  
+  <!-- Subtle overlay for modern gloss -->
+  <path d="M 16 64 Q 64 48 112 64 L 112 112 Q 64 128 16 112 Z" fill="#FFFFFF" opacity="0.05"/>
+</svg>
