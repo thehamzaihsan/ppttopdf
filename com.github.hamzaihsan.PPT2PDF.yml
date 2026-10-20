@@ -1,6 +1,6 @@
 app-id: com.github.hamzaihsan.PPT2PDF
 runtime: org.gnome.Platform
-runtime-version: '45'
+runtime-version: '47'
 sdk: org.gnome.Sdk
 command: ppt2pdf-gtk
 finish-args:

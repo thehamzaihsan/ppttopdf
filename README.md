@@ -1,93 +1,112 @@
 # <img src="com.github.hamzaihsan.PPT2PDF.svg" width="48" height="48" align="absmiddle"> PPT to PDF Converter
 
-A modern, fast, and robust batch converter that transforms PowerPoint presentations (`.ppt`, `.pptx`) into high-quality, text-based PDF files. 
+A modern, fast batch converter that transforms PowerPoint presentations (`.ppt`, `.pptx`) into high-quality, text-based PDF files.
 
-Powered by **LibreOffice Headless**, this tool guarantees that your output PDFs retain exact text formatting and remain selectable (not flattened image-based exports).
+Powered by **LibreOffice Headless**, output PDFs retain exact text formatting and remain fully selectable — not flattened image exports.
 
 ---
 
 ## 🚀 Features
-- **Batch Processing**: Convert entire folders of presentations with a single click.
-- **Native GTK3 GUI**: A modern, sleek, and responsive interface designed to integrate seamlessly on Linux desktops (GNOME, KDE, Cinnamon, etc.).
-- **Flatpak Support**: Easily containerize and install the application natively as a Flatpak, keeping your host system clean while dynamically executing LibreOffice processes.
-- **Background Processing**: Heavy conversions happen safely in the background, keeping the UI responsive and providing a progress bar.
-- **No Lost Formatting**: True text-based PDF conversion powered by the industry-standard LibreOffice rendering engine.
+
+- **Batch Processing** — Convert entire folders with a single click.
+- **GTK4 GUI** — A clean, responsive interface built on GTK 4 that integrates natively on any Linux desktop.
+- **Universal Desktop Support** — Works on GNOME, KDE Plasma, CachyOS (KDE & GNOME), XFCE, Cinnamon, and more.
+  - On GNOME or inside Flatpak: enhanced with **libadwaita** (Adwaita look, dark mode, colour scheme support).
+  - On KDE / CachyOS KDE / others: falls back to plain GTK4 and **respects your system theme** (Breeze-GTK4, Arc, etc.) — no alien colours.
+- **Portal-aware file picker** — Uses `Gtk.FileDialog` which opens the native file picker (KDE's or GNOME's) automatically depending on your DE, even on Wayland.
+- **Flatpak Support** — Containerised install keeps your host clean; connects to LibreOffice on the host via `flatpak-spawn`.
+- **Background Processing** — Conversions run in a background thread; UI stays responsive with a live progress bar.
+- **No Lost Formatting** — True text-based PDF output via the LibreOffice rendering engine.
 
 ---
 
-## 🛠️ Multiple Interfaces
+## 🖥️ Interfaces
 
-We provide several flavors to suit your workflow:
-
-1. **GTK3 Modern GUI (`ppt2pdf-gtk.py`)**: The flagship, modern Linux desktop graphical application.
-2. **Tkinter GUI (`ppt2pdf-gui.py`)**: A lightweight Python graphical alternative built on standard modules.
-3. **Bash CLI (`ppt2pdf`)**: A pure bash tool providing fast, colorful command-line conversions.
+| Interface | File | Description |
+|---|---|---|
+| **GTK4 GUI** | `ppt2pdf-gtk.py` | Flagship desktop GUI — works on all DEs |
+| **Bash CLI** | `ppt2pdf` | Lightweight terminal converter |
 
 ---
 
 ## 📦 Installation & Setup
 
-### Option 1: Flatpak Installation (Recommended for Linux Desktop)
-Installing via Flatpak gives you a native application icon and sandbox security.
+### Option 1: Flatpak (Recommended)
 
-*Note: Requires LibreOffice to be installed on your base system, as the Flatpak connects securely to it via `flatpak-spawn`. *
+Gives you a native application icon, Flatpak sandboxing, and a consistent look regardless of distro.
+
+> **Note:** LibreOffice must be installed on your host system — the Flatpak calls it via `flatpak-spawn`.
 
 ```bash
-# Clone or navigate to the directory
+# Clone the repo (or navigate into the directory)
 cd ppttopdf
 
-# Run our handy installation script
+# Build and install locally (auto-detects your package manager)
 ./install_flatpak.sh
 ```
 
-Once installed, it will appear in your application menu/launcher as **"PPT to PDF"**. You can also run it via:
+Once installed it will appear in your app launcher as **"PPT to PDF"**. You can also run it via:
+
 ```bash
 flatpak run com.github.hamzaihsan.PPT2PDF
 ```
 
 ---
 
-### Option 2: Python Virtual Environment (For developers or standalone use)
-Run the GTK Application natively by provisioning a virtual environment.
+### Option 2: Python venv (Developers / Standalone)
 
 ```bash
-# Clone or navigate to the directory
 cd ppttopdf
 
-# Automatically install system deps and setup python environment
+# Set up the virtual environment (installs PyGObject etc.)
 ./setup_venv.sh
 
-# Activate the virtual environment
+# Activate it
 source .venv/bin/activate
 
-# Launch the visual GTK3 Application
-./ppt2pdf-gtk.py
+# Launch the GTK4 app
+python3 ppt2pdf-gtk.py
 ```
+
+> **libadwaita is optional.** If it's not installed on your system the app will start normally using plain GTK4 and your system theme.
 
 ---
 
 ### Option 3: Bash CLI (Fast & Simple)
-If you just want to run conversions from the terminal, simply run the bash script:
 
 ```bash
-# Ensure it is executable
 chmod +x ppt2pdf
-
-# Provide the folder path containing your PPTs
-./ppt2pdf /path/to/my_presentations
+./ppt2pdf /path/to/your/presentations
 ```
+
+---
+
+## 🔧 Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| **LibreOffice** | The conversion backend. Install via your package manager. |
+| **GTK 4.10+** | Included in any modern GNOME/KDE desktop. |
+| **PyGObject ≥ 3.46** | Python GTK bindings — see `requirements.txt`. |
+| **libadwaita 1.x** | *Optional.* Enhances UI on GNOME; gracefully skipped on KDE/other DEs. |
+
+**Installing LibreOffice:**
+
+| Distro | Command |
+|---|---|
+| Arch / CachyOS | `sudo pacman -S libreoffice-fresh` |
+| Fedora | `sudo dnf install libreoffice` |
+| Ubuntu / Debian | `sudo apt install libreoffice` |
+| openSUSE | `sudo zypper install libreoffice` |
 
 ---
 
 ## 🖼️ Icon
 
-This repository also includes a custom designed, SVG scalable icon (`com.github.hamzaihsan.PPT2PDF.svg`) natively packed into the Flatpak for a crisp aesthetic display.
+A custom scalable SVG icon (`com.github.hamzaihsan.PPT2PDF.svg`) is bundled for a crisp display in app launchers.
 
-## 🤝 Prerequisites
-
-- **LibreOffice**: Must be installed on your host system as it serves as the underlying conversion engine.
-  - Debian/Ubuntu: `sudo apt install libreoffice`
+---
 
 ## 📝 License
 
-This project is open source and available for personal or professional use.
+Open source — free for personal and professional use.

@@ -1,394 +1,420 @@
 #!/usr/bin/env python3
+"""
+PPT2PDF — GTK4 batch converter  (GNOME / KDE / CachyOS / XFCE / …)
+
+• Requires: GTK 4.10+, PyGObject ≥ 3.46
+• Optional: libadwaita 1.x  (auto-detected; used on GNOME / Flatpak)
+• Backend: LibreOffice headless (host or via flatpak-spawn)
+"""
 
 import os
 import glob
 import subprocess
 import threading
+
 import gi
 
-gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib, Gdk
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gtk, GLib, Gio
 
-CSS = """
-/* Custom CSS for a clean, modern aesthetic */
-window {
-    background-color: @theme_bg_color;
+# ── Optional libadwaita ────────────────────────────────────────────────────────
+# Present on GNOME desktops and always inside the Flatpak (GNOME SDK).
+# Gracefully skipped on KDE Plasma, CachyOS KDE, XFCE, etc. so the app
+# falls back to plain GTK4 widgets and respects whatever system theme is active.
+try:
+    gi.require_version("Adw", "1")
+    from gi.repository import Adw          # noqa: F401
+    HAS_ADW = True
+except (ValueError, ImportError):
+    HAS_ADW = False
+
+# ── Minimal CSS ────────────────────────────────────────────────────────────────
+# No colour overrides — colours come entirely from the active system theme
+# (Adwaita, Breeze-GTK4, Arc, Mint-Y, …).
+CSS = b"""
+.ppt-main {
+    padding: 20px;
 }
-.main-container {
-    padding: 30px;
-}
-.heading {
-    font-size: 24px;
+.ppt-title {
+    font-size: 22px;
     font-weight: bold;
-    color: @theme_fg_color;
+    margin-bottom: 4px;
 }
-.subheading {
+.ppt-subtitle {
+    margin-bottom: 18px;
+}
+.ppt-convert-btn {
+    padding: 10px 28px;
+    font-weight: bold;
     font-size: 14px;
-    color: alpha(@theme_fg_color, 0.7);
-    margin-bottom: 20px;
+    border-radius: 99px;
+    margin-top: 6px;
+    margin-bottom: 12px;
 }
-.action-button {
-    padding: 10px 15px;
-    font-weight: bold;
+.ppt-plain-frame {
     border-radius: 8px;
+    margin-bottom: 14px;
 }
-.folder-box {
-    padding: 15px;
-    border-radius: 8px;
-    border: 1px solid alpha(@theme_fg_color, 0.15);
-    background-color: alpha(@theme_fg_color, 0.05);
-}
-.progress-bar {
-    min-height: 12px;
-    border-radius: 6px;
-    margin-top: 10px;
-}
-.status-label {
-    font-size: 13px;
-    color: alpha(@theme_fg_color, 0.6);
-    margin-top: 10px;
+.ppt-plain-inner {
+    padding: 14px 18px;
 }
 """
 
-class PPT2PDFWindow(Gtk.Window):
-    def __init__(self):
-        super().__init__(type=Gtk.WindowType.TOPLEVEL)
-        self.set_title("PPT to PDF Converter")
-        # Larger default size for a spacious look
-        self.set_default_size(680, 400)
-        self.set_position(Gtk.WindowPosition.CENTER)
 
-        # Apply custom CSS
-        self.apply_css()
+# ── Main window ────────────────────────────────────────────────────────────────
 
-        # Try to enforce dark theme preference for a sleek look (if user wants)
-        settings = Gtk.Settings.get_default()
-        if settings:
-            settings.set_property("gtk-application-prefer-dark-theme", True)
+class PPT2PDFWindow(Gtk.ApplicationWindow):
+    def __init__(self, app: Gtk.Application) -> None:
+        super().__init__(application=app)
+        self.set_title("PPT to PDF")
+        self.set_default_size(700, 440)
 
-        self.setup_headerbar()
+        self._input_dir = ""
+        self._output_dir = ""
 
-        self.input_dir = ""
-        self.output_dir = ""
+        self._apply_css()
+        self._build_ui()
+        self._check_libreoffice()
 
-        # Main Layout Box
-        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        vbox.get_style_context().add_class("main-container")
-        self.add(vbox)
+    # ── CSS ────────────────────────────────────────────────────────────────────
 
-        # Header Titles
-        title_label = Gtk.Label(label="Batch Converter")
-        title_label.set_halign(Gtk.Align.CENTER)
-        title_label.get_style_context().add_class("heading")
-        vbox.pack_start(title_label, False, False, 5)
+    def _apply_css(self) -> None:
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            self.get_display(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
 
-        sub_label = Gtk.Label(label="Turn your robust PowerPoint presentations into pristine PDFs effortlessly.")
-        sub_label.set_halign(Gtk.Align.CENTER)
-        sub_label.set_line_wrap(True)
-        sub_label.get_style_context().add_class("subheading")
-        vbox.pack_start(sub_label, False, False, 5)
+    # ── UI construction ────────────────────────────────────────────────────────
 
-        # Content Box with a modern card-like appearance
-        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        content_box.get_style_context().add_class("folder-box")
-        content_box.set_margin_top(15)
-        content_box.set_margin_bottom(20)
-        vbox.pack_start(content_box, False, False, 0)
-
-        # Input Row
-        in_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        
-        in_icon = Gtk.Image.new_from_icon_name("folder-open-symbolic", Gtk.IconSize.LARGE_TOOLBAR)
-        in_icon.set_margin_start(10)
-        in_box.pack_start(in_icon, False, False, 0)
-        
-        in_lbl = Gtk.Label(label="Input Folder (PPT/PPTX):")
-        in_lbl.set_halign(Gtk.Align.START)
-        in_box.pack_start(in_lbl, False, False, 0)
-
-        self.in_btn = Gtk.Button(label="Select Folder")
-        self.in_btn.connect("clicked", self.on_choose_input)
-        self.in_btn.set_hexpand(True)
-        self.in_btn.set_halign(Gtk.Align.END)
-        self.in_btn.get_style_context().add_class("action-button")
-        in_box.pack_start(self.in_btn, True, True, 0)
-
-        content_box.pack_start(in_box, False, False, 0)
-
-        # Output Row
-        out_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        
-        out_icon = Gtk.Image.new_from_icon_name("document-save-symbolic", Gtk.IconSize.LARGE_TOOLBAR)
-        out_icon.set_margin_start(10)
-        out_box.pack_start(out_icon, False, False, 0)
-
-        out_lbl = Gtk.Label(label="Output Folder (Optional):")
-        out_lbl.set_halign(Gtk.Align.START)
-        out_box.pack_start(out_lbl, False, False, 0)
-
-        self.out_btn = Gtk.Button(label="Default (Same as Input)")
-        self.out_btn.connect("clicked", self.on_choose_output)
-        self.out_btn.set_hexpand(True)
-        self.out_btn.set_halign(Gtk.Align.END)
-        self.out_btn.get_style_context().add_class("action-button")
-        out_box.pack_start(self.out_btn, True, True, 0)
-
-        content_box.pack_start(out_box, False, False, 0)
-
-        # Bottom Area
-        bottom_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        vbox.pack_end(bottom_box, False, False, 0)
-
-        # Convert Button (BIG)
-        self.convert_btn = Gtk.Button()
-        # Create a box for the button content (Icon + Text)
-        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        btn_box.set_halign(Gtk.Align.CENTER)
-        
-        btn_icon = Gtk.Image.new_from_icon_name("media-playback-start-symbolic", Gtk.IconSize.BUTTON)
-        btn_box.pack_start(btn_icon, False, False, 0)
-        
-        btn_lbl = Gtk.Label()
-        btn_lbl.set_markup("<b>Convert to PDF</b>")
-        btn_box.pack_start(btn_lbl, False, False, 0)
-        
-        self.convert_btn.add(btn_box)
-        
-        self.convert_btn.connect("clicked", self.on_convert_clicked)
-        self.convert_btn.get_style_context().add_class("suggested-action")
-        self.convert_btn.get_style_context().add_class("action-button")
-        self.convert_btn.set_size_request(-1, 50)
-        bottom_box.pack_end(self.convert_btn, False, False, 0)
-
-        # Progress and Status
-        self.status_label = Gtk.Label(label="Ready to convert.")
-        self.status_label.set_halign(Gtk.Align.CENTER)
-        self.status_label.get_style_context().add_class("status-label")
-        bottom_box.pack_start(self.status_label, False, False, 0)
-
-        self.progress_bar = Gtk.ProgressBar()
-        self.progress_bar.set_show_text(True)
-        self.progress_bar.get_style_context().add_class("progress-bar")
-        bottom_box.pack_start(self.progress_bar, False, False, 0)
-
-        if not self.check_libreoffice():
-            self.show_error_dialog("LibreOffice not found! It is required to run the conversion.")
-            self.convert_btn.set_sensitive(False)
-            self.status_label.set_text("Error: LibreOffice missing.")
-
-    def apply_css(self):
-        css_provider = Gtk.CssProvider()
-        css_provider.load_from_data(CSS.encode())
-        screen = Gdk.Screen.get_default()
-        context = Gtk.StyleContext()
-        context.add_provider_for_screen(screen, css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-
-    def setup_headerbar(self):
+    def _build_ui(self) -> None:
+        # ── Header bar (GTK4 native — works on every DE)
         header = Gtk.HeaderBar()
-        header.set_show_close_button(True)
-        header.set_title("PPT2PDF")
-        header.set_subtitle("Converter Tool")
-        
-        # Add a nice app icon symbol to header bar
-        icon = Gtk.Image.new_from_icon_name("application-pdf-symbolic", Gtk.IconSize.LARGE_TOOLBAR)
-        header.pack_start(icon)
-
+        pdf_icon = Gtk.Image.new_from_icon_name("application-pdf-symbolic")
+        header.pack_start(pdf_icon)
         self.set_titlebar(header)
 
-    def get_libreoffice_command(self):
-        in_flatpak = os.path.exists("/.flatpak-info")
-        if in_flatpak:
+        # ── Root vertical box
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        root.add_css_class("ppt-main")
+        self.set_child(root)
+
+        # ── Title / subtitle
+        title = Gtk.Label(label="Batch PPT → PDF Converter")
+        title.add_css_class("ppt-title")
+        title.set_halign(Gtk.Align.CENTER)
+        root.append(title)
+
+        subtitle = Gtk.Label(
+            label="Convert entire folders of PowerPoint presentations to PDF using LibreOffice."
+        )
+        subtitle.add_css_class("dim-label")
+        subtitle.add_css_class("ppt-subtitle")
+        subtitle.set_halign(Gtk.Align.CENTER)
+        subtitle.set_wrap(True)
+        root.append(subtitle)
+
+        # ── Folder selection — adaptive: Adwaita rows OR plain GTK4 grid
+        if HAS_ADW:
+            self._build_adw_folder_rows(root)
+        else:
+            self._build_gtk_folder_rows(root)
+
+        # ── Flexible spacer so controls push to the bottom
+        spacer = Gtk.Box()
+        spacer.set_vexpand(True)
+        root.append(spacer)
+
+        # ── Status label
+        self._status_lbl = Gtk.Label(label="Ready to convert.")
+        self._status_lbl.add_css_class("dim-label")
+        self._status_lbl.set_halign(Gtk.Align.CENTER)
+        self._status_lbl.set_margin_bottom(6)
+        root.append(self._status_lbl)
+
+        # ── Progress bar
+        self._progress = Gtk.ProgressBar()
+        self._progress.set_show_text(True)
+        self._progress.set_text("")
+        self._progress.set_margin_bottom(10)
+        root.append(self._progress)
+
+        # ── Convert button
+        self._convert_btn = Gtk.Button(label="⚡  Convert to PDF")
+        self._convert_btn.add_css_class("suggested-action")
+        self._convert_btn.add_css_class("ppt-convert-btn")
+        self._convert_btn.set_halign(Gtk.Align.CENTER)
+        self._convert_btn.connect("clicked", self._on_convert_clicked)
+        root.append(self._convert_btn)
+
+    # ── Adwaita folder rows (GNOME / Flatpak) ---------------------------------
+
+    def _build_adw_folder_rows(self, parent: Gtk.Box) -> None:
+        group = Adw.PreferencesGroup()
+        group.set_margin_bottom(10)
+        parent.append(group)
+
+        # Input row
+        self._in_row = Adw.ActionRow()
+        self._in_row.set_title("Input Folder")
+        self._in_row.set_subtitle("Folder containing .ppt / .pptx files")
+        in_btn = Gtk.Button(label="Browse…")
+        in_btn.add_css_class("flat")
+        in_btn.set_valign(Gtk.Align.CENTER)
+        in_btn.connect("clicked", self._on_choose_input)
+        self._in_row.add_suffix(in_btn)
+        self._in_row.set_activatable_widget(in_btn)
+        group.add(self._in_row)
+
+        # Output row
+        self._out_row = Adw.ActionRow()
+        self._out_row.set_title("Output Folder")
+        self._out_row.set_subtitle("Leave empty to save PDFs alongside the originals")
+        out_btn = Gtk.Button(label="Browse…")
+        out_btn.add_css_class("flat")
+        out_btn.set_valign(Gtk.Align.CENTER)
+        out_btn.connect("clicked", self._on_choose_output)
+        self._out_row.add_suffix(out_btn)
+        self._out_row.set_activatable_widget(out_btn)
+        group.add(self._out_row)
+
+    # ── Plain GTK4 folder rows (KDE / CachyOS KDE / XFCE / …) ----------------
+
+    def _build_gtk_folder_rows(self, parent: Gtk.Box) -> None:
+        frame = Gtk.Frame()
+        frame.add_css_class("ppt-plain-frame")
+        frame.set_margin_bottom(14)
+        parent.append(frame)
+
+        grid = Gtk.Grid()
+        grid.add_css_class("ppt-plain-inner")
+        grid.set_row_spacing(12)
+        grid.set_column_spacing(12)
+        frame.set_child(grid)
+
+        # Input
+        in_lbl = Gtk.Label(label="Input Folder:")
+        in_lbl.set_halign(Gtk.Align.START)
+        self._in_path_lbl = Gtk.Label(label="(not selected)")
+        self._in_path_lbl.set_halign(Gtk.Align.START)
+        self._in_path_lbl.set_hexpand(True)
+        self._in_path_lbl.add_css_class("dim-label")
+        in_btn = Gtk.Button(label="Browse…")
+        in_btn.connect("clicked", self._on_choose_input)
+        grid.attach(in_lbl,          0, 0, 1, 1)
+        grid.attach(self._in_path_lbl, 1, 0, 1, 1)
+        grid.attach(in_btn,          2, 0, 1, 1)
+
+        # Output
+        out_lbl = Gtk.Label(label="Output Folder:")
+        out_lbl.set_halign(Gtk.Align.START)
+        self._out_path_lbl = Gtk.Label(label="(same as input)")
+        self._out_path_lbl.set_halign(Gtk.Align.START)
+        self._out_path_lbl.set_hexpand(True)
+        self._out_path_lbl.add_css_class("dim-label")
+        out_btn = Gtk.Button(label="Browse…")
+        out_btn.connect("clicked", self._on_choose_output)
+        grid.attach(out_lbl,           0, 1, 1, 1)
+        grid.attach(self._out_path_lbl, 1, 1, 1, 1)
+        grid.attach(out_btn,           2, 1, 1, 1)
+
+    # ── LibreOffice ────────────────────────────────────────────────────────────
+
+    def _get_lo_cmd(self) -> list[str]:
+        """Return the LibreOffice command, using flatpak-spawn when sandboxed."""
+        if os.path.exists("/.flatpak-info"):
             return ["flatpak-spawn", "--host", "libreoffice"]
         return ["libreoffice"]
 
-    def check_libreoffice(self):
+    def _check_libreoffice(self) -> None:
         try:
-            cmd = self.get_libreoffice_command() + ["--version"]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return True
+            subprocess.run(
+                self._get_lo_cmd() + ["--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
         except FileNotFoundError:
-            return False
+            self._convert_btn.set_sensitive(False)
+            self._status_lbl.set_text("⚠ LibreOffice not found — please install it.")
 
-    def shorten_path(self, path):
-        # Shorten path for display
+    # ── Path helper ────────────────────────────────────────────────────────────
+
+    def _shorten(self, path: str) -> str:
         home = os.path.expanduser("~")
         if path.startswith(home):
-            return "~" + path[len(home):]
-        if len(path) > 40:
-            return "..." + path[-37:]
-        return path
+            path = "~" + path[len(home):]
+        return path if len(path) <= 48 else "…" + path[-45:]
 
-    def show_error_dialog(self, message):
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            flags=0,
-            message_type=Gtk.MessageType.ERROR,
-            buttons=Gtk.ButtonsType.OK,
-            text="Error"
-        )
-        dialog.format_secondary_text(message)
-        dialog.run()
-        dialog.destroy()
+    # ── Folder pickers (async, portal-aware — works on X11, Wayland, KDE, …) --
 
-    def show_info_dialog(self, title, message):
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            flags=0,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=title
-        )
-        dialog.format_secondary_text(message)
-        dialog.run()
-        dialog.destroy()
+    def _on_choose_input(self, *_) -> None:
+        d = Gtk.FileDialog()
+        d.set_title("Select Input Folder")
+        d.select_folder(self, None, self._on_input_chosen)
 
-    def on_choose_input(self, widget):
-        dialog = Gtk.FileChooserDialog(
-            title="Please choose an input folder",
-            parent=self,
-            action=Gtk.FileChooserAction.SELECT_FOLDER
-        )
-        dialog.add_buttons(
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            "Select", Gtk.ResponseType.OK
-        )
-        
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            self.input_dir = dialog.get_filename()
-            self.in_btn.set_label(self.shorten_path(self.input_dir))
-            
-            # Default output to input
-            if not self.output_dir:
-                self.output_dir = self.input_dir
-                self.out_btn.set_label("Default: " + self.shorten_path(self.output_dir))
-                
-        dialog.destroy()
+    def _on_input_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+        try:
+            gfile = dialog.select_folder_finish(result)
+        except GLib.Error:
+            return  # user cancelled
+        self._input_dir = gfile.get_path()
+        short = self._shorten(self._input_dir)
+        if HAS_ADW:
+            self._in_row.set_subtitle(short)
+        else:
+            self._in_path_lbl.set_text(short)
+        # Auto-fill output if not yet chosen
+        if not self._output_dir:
+            self._output_dir = self._input_dir
+            if HAS_ADW:
+                self._out_row.set_subtitle(short + "  (same as input)")
+            else:
+                self._out_path_lbl.set_text(short + " (same)")
 
-    def on_choose_output(self, widget):
-        dialog = Gtk.FileChooserDialog(
-            title="Please choose an output folder",
-            parent=self,
-            action=Gtk.FileChooserAction.SELECT_FOLDER
-        )
-        dialog.add_buttons(
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            "Select", Gtk.ResponseType.OK
-        )
-        
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            self.output_dir = dialog.get_filename()
-            self.out_btn.set_label(self.shorten_path(self.output_dir))
-            
-        dialog.destroy()
+    def _on_choose_output(self, *_) -> None:
+        d = Gtk.FileDialog()
+        d.set_title("Select Output Folder")
+        d.select_folder(self, None, self._on_output_chosen)
 
-    def on_convert_clicked(self, widget):
-        if not self.input_dir:
-            self.show_error_dialog("Please select an input folder first.")
+    def _on_output_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+        try:
+            gfile = dialog.select_folder_finish(result)
+        except GLib.Error:
+            return
+        self._output_dir = gfile.get_path()
+        short = self._shorten(self._output_dir)
+        if HAS_ADW:
+            self._out_row.set_subtitle(short)
+        else:
+            self._out_path_lbl.set_text(short)
+
+    # ── Alert helper ───────────────────────────────────────────────────────────
+
+    def _alert(self, heading: str, detail: str) -> None:
+        dlg = Gtk.AlertDialog()
+        dlg.set_message(heading)
+        dlg.set_detail(detail)
+        dlg.show(self)
+
+    # ── Conversion ─────────────────────────────────────────────────────────────
+
+    def _on_convert_clicked(self, *_) -> None:
+        if not self._input_dir:
+            self._alert("No Input Folder", "Please select an input folder first.")
+            return
+        if not os.path.isdir(self._input_dir):
+            self._alert("Invalid Folder", "The selected input folder no longer exists.")
             return
 
-        if not os.path.exists(self.input_dir):
-            self.show_error_dialog("Input directory does not exist.")
-            return
-            
-        out_dir = self.output_dir if self.output_dir else self.input_dir
+        out_dir = self._output_dir or self._input_dir
         if not os.path.exists(out_dir):
             try:
-                os.makedirs(out_dir)
-            except Exception as e:
-                self.show_error_dialog(f"Could not create output directory:\n{e}")
+                os.makedirs(out_dir, exist_ok=True)
+            except Exception as exc:
+                self._alert("Cannot Create Output Folder", str(exc))
                 return
 
-        # Find files
-        extensions = ('*.ppt', '*.pptx')
-        files_to_convert = []
-        for ext in extensions:
-            files_to_convert.extend(glob.glob(os.path.join(self.input_dir, ext)))
-        
-        if not files_to_convert:
-            self.show_info_dialog("Info", "No PPT or PPTX files found in the input folder.")
+        files: list[str] = []
+        for ext in ("*.ppt", "*.pptx"):
+            files.extend(glob.glob(os.path.join(self._input_dir, ext)))
+
+        if not files:
+            self._alert(
+                "No Presentations Found",
+                "No .ppt or .pptx files were found in the selected folder.",
+            )
             return
 
-        # Disable buttons and start thread
-        self.convert_btn.set_sensitive(False)
-        self.in_btn.set_sensitive(False)
-        self.out_btn.set_sensitive(False)
-        self.progress_bar.set_fraction(0.0)
-        self.progress_bar.set_text("0%")
-        self.status_label.set_text(f"Starting conversion for {len(files_to_convert)} files...")
-        
-        thread = threading.Thread(target=self.run_conversion_task, args=(files_to_convert, out_dir))
-        thread.daemon = True
-        thread.start()
+        # Lock the UI and kick off the background thread
+        self._convert_btn.set_sensitive(False)
+        self._progress.set_fraction(0.0)
+        self._progress.set_text("0 %")
+        self._status_lbl.set_text(f"Starting conversion of {len(files)} file(s)…")
 
-    def run_conversion_task(self, files_to_convert, output_dir):
-        total_files = len(files_to_convert)
-        success_count = 0
-        error_count = 0
+        threading.Thread(
+            target=self._conversion_worker,
+            args=(files, out_dir),
+            daemon=True,
+        ).start()
 
-        for idx, file_path in enumerate(files_to_convert):
-            filename = os.path.basename(file_path)
-            
-            # Update UI safely
-            GLib.idle_add(self.update_status, f"Processing: {filename}...")
-            
+    def _conversion_worker(self, files: list[str], out_dir: str) -> None:
+        total = len(files)
+        ok = fail = 0
+
+        for idx, path in enumerate(files):
+            name = os.path.basename(path)
+            GLib.idle_add(self._status_lbl.set_text, f"Converting: {name}")
+
             try:
-                # Run LibreOffice headless conversion
-                cmd = self.get_libreoffice_command() + [
-                    "--headless", "--convert-to", "pdf", file_path, "--outdir", output_dir
-                ]
-                process = subprocess.run(
-                    cmd,
+                result = subprocess.run(
+                    self._get_lo_cmd() + [
+                        "--headless", "--convert-to", "pdf",
+                        path, "--outdir", out_dir,
+                    ],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    check=False,
                 )
-                
-                if process.returncode == 0:
-                    success_count += 1
+                if result.returncode == 0:
+                    ok += 1
                 else:
-                    error_count += 1
-                    print(f"Error converting {filename}: {process.stderr}")
-                    
-            except Exception as e:
-                error_count += 1
-                print(f"Exception converting {filename}: {e}")
-            
-            # Update progress
-            progress = (idx + 1) / total_files
-            GLib.idle_add(self.update_progress, progress, f"{int(progress * 100)}% ({idx+1}/{total_files})")
+                    fail += 1
+                    print(f"[ppt2pdf] FAILED: {name}\n{result.stderr.strip()}")
+            except Exception as exc:
+                fail += 1
+                print(f"[ppt2pdf] EXCEPTION: {name}: {exc}")
 
-        # Finish up
-        GLib.idle_add(self.finish_conversion, success_count, error_count)
+            frac = (idx + 1) / total
+            GLib.idle_add(self._progress.set_fraction, frac)
+            GLib.idle_add(self._progress.set_text, f"{int(frac * 100)} %  ({idx + 1}/{total})")
 
-    def update_status(self, text):
-        self.status_label.set_text(text)
-        return False  # Return False to remove from idle loop
+        GLib.idle_add(self._on_done, ok, fail)
 
-    def update_progress(self, fraction, text):
-        self.progress_bar.set_fraction(fraction)
-        self.progress_bar.set_text(text)
-        return False
-
-    def finish_conversion(self, success_count, error_count):
-        self.convert_btn.set_sensitive(True)
-        self.in_btn.set_sensitive(True)
-        self.out_btn.set_sensitive(True)
-        
-        if error_count > 0:
-            status = f"Completed: {success_count} successful, {error_count} failed."
-            self.status_label.set_text(status)
-            self.show_error_dialog(f"Finished with some errors.\n\n{status}")
+    def _on_done(self, ok: int, fail: int) -> bool:
+        self._convert_btn.set_sensitive(True)
+        if fail:
+            summary = f"{ok} succeeded, {fail} failed."
+            self._status_lbl.set_text(f"⚠  Done with errors — {summary}")
+            self._alert("Conversion Finished with Errors", summary)
         else:
-            status = f"Successfully converted all {success_count} presentations!"
-            self.status_label.set_text(status)
-            self.show_info_dialog("Success", status)
-        
-        return False
+            summary = f"All {ok} presentation(s) converted successfully!"
+            self._status_lbl.set_text(f"✓  {summary}")
+            self._alert("Conversion Complete", summary)
+        return GLib.SOURCE_REMOVE
+
+
+# ── Application entry point ────────────────────────────────────────────────────
+
+def _on_activate(app: Gtk.Application) -> None:
+    win = app.get_active_window()
+    if not win:
+        win = PPT2PDFWindow(app)
+    win.present()
+
+
+def main() -> None:
+    if HAS_ADW:
+        # Adw.Application initialises the Adwaita style manager so the app
+        # honours the GNOME dark-mode preference and colour-scheme settings.
+        app = Adw.Application(
+            application_id="com.github.hamzaihsan.PPT2PDF",
+            flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
+        )
+    else:
+        # Plain Gtk.Application — fully respects whatever theme the DE uses
+        # (Breeze-GTK4 on KDE/CachyOS, Arc, Mint-Y, …).
+        app = Gtk.Application(
+            application_id="com.github.hamzaihsan.PPT2PDF",
+            flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
+        )
+
+    app.connect("activate", _on_activate)
+    app.run(None)
+
 
 if __name__ == "__main__":
-    app = PPT2PDFWindow()
-    app.connect("destroy", Gtk.main_quit)
-    app.show_all()
-    Gtk.main()
+    main()

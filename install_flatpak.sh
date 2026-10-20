@@ -15,14 +15,26 @@ echo -e "${BLUE}==========================================${NC}"
 # Check if flatpak and flatpak-builder are installed
 if ! command -v flatpak-builder &> /dev/null; then
     echo "flatpak-builder is not installed. Installing it now (requires sudo)..."
-    sudo apt-get update && sudo apt-get install -y flatpak-builder
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y flatpak-builder
+    elif command -v pacman &> /dev/null; then
+        sudo pacman -S --noconfirm flatpak-builder
+    elif command -v dnf &> /dev/null; then
+        sudo dnf install -y flatpak-builder
+    elif command -v zypper &> /dev/null; then
+        sudo zypper install -y flatpak-builder
+    else
+        echo "ERROR: Could not detect a supported package manager (apt, pacman, dnf, zypper)."
+        echo "Please install flatpak-builder manually and re-run this script."
+        exit 1
+    fi
 fi
 
 echo "Ensuring flathub repository is added..."
 flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-echo "Installing required GNOME SDK and Platform (version 45)..."
-flatpak install --user --noninteractive flathub org.gnome.Platform//45 org.gnome.Sdk//45
+echo "Installing required GNOME SDK and Platform (version 47)..."
+flatpak install --user --noninteractive flathub org.gnome.Platform//47 org.gnome.Sdk//47
 
 echo "Building and installing the Flatpak application..."
 flatpak-builder --user --install --force-clean build-dir com.github.hamzaihsan.PPT2PDF.yml
