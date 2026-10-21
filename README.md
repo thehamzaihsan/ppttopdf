@@ -98,9 +98,10 @@ flatpak run com.github.hamzaihsan.PPT2PDF
 ```
 
 The helper installs the GNOME 47 SDK and platform, builds the application, and
-installs it for the current user. LibreOffice is still required on the host;
-the packaged application is designed to invoke the host converter through
-`flatpak-spawn`.
+installs it for the current user. PySide6 is bundled into the Flatpak because
+it is not part of the GNOME runtime. LibreOffice is still required on the
+host; the packaged application is designed to invoke the host converter
+through `flatpak-spawn`.
 
 ## Usage
 

@@ -17,7 +17,12 @@ finish-args:
 modules:
   - name: ppt2pdf
     buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
     build-commands:
+      # PySide6 is not included in the GNOME runtime.
+      - python3 -m pip install --prefix=/app --no-cache-dir --disable-pip-version-check 'PySide6>=6.8.0'
       # Install the python script
       - install -Dm755 ppt2pdf-gtk.py /app/bin/ppt2pdf-gtk
       # Install desktop file
