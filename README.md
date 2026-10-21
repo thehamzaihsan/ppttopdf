@@ -1,112 +1,141 @@
-# <img src="com.github.hamzaihsan.PPT2PDF.svg" width="48" height="48" align="absmiddle"> PPT to PDF Converter
+# <img src="com.github.hamzaihsan.PPT2PDF.svg" width="48" height="48" align="absmiddle"> PPT2PDF
 
-A modern, fast batch converter that transforms PowerPoint presentations (`.ppt`, `.pptx`) into high-quality, text-based PDF files.
+PPT2PDF is a desktop and command-line utility for converting PowerPoint
+presentations (`.ppt` and `.pptx`) into PDF files with
+[LibreOffice](https://www.libreoffice.org/) running in headless mode.
 
-Powered by **LibreOffice Headless**, output PDFs retain exact text formatting and remain fully selectable — not flattened image exports.
+The converter processes the original presentation rather than taking
+screenshots, so the generated PDFs keep selectable text and LibreOffice's
+document rendering.
 
----
+## Features
 
-## 🚀 Features
+### Desktop application
 
-- **Batch Processing** — Convert entire folders with a single click.
-- **GTK4 GUI** — A clean, responsive interface built on GTK 4 that integrates natively on any Linux desktop.
-- **Universal Desktop Support** — Works on GNOME, KDE Plasma, CachyOS (KDE & GNOME), XFCE, Cinnamon, and more.
-  - On GNOME or inside Flatpak: enhanced with **libadwaita** (Adwaita look, dark mode, colour scheme support).
-  - On KDE / CachyOS KDE / others: falls back to plain GTK4 and **respects your system theme** (Breeze-GTK4, Arc, etc.) — no alien colours.
-- **Portal-aware file picker** — Uses `Gtk.FileDialog` which opens the native file picker (KDE's or GNOME's) automatically depending on your DE, even on Wayland.
-- **Flatpak Support** — Containerised install keeps your host clean; connects to LibreOffice on the host via `flatpak-spawn`.
-- **Background Processing** — Conversions run in a background thread; UI stays responsive with a live progress bar.
-- **No Lost Formatting** — True text-based PDF output via the LibreOffice rendering engine.
+- **Cross-platform Qt 6 interface** powered by PySide6 for Linux, Windows, and
+  macOS.
+- **Batch conversion** of every `.ppt` and `.pptx` file in a selected folder.
+- **Optional recursive scanning** to include presentations in subfolders.
+- **Drag and drop** of a folder or presentation onto the application window.
+- **Separate output folder** selection, with the input folder used by default.
+- **Live file status** for pending, converting, completed, failed, and
+  cancelled files.
+- **Responsive UI** while conversions run in the background.
+- **Parallel conversion** with up to four LibreOffice workers for faster
+  batches.
+- **Cancellation** for stopping queued work while allowing active conversions
+  to finish safely.
+- **Progress reporting** and a one-click action to open the output folder.
+- **Persistent folders** remembered between launches with `QSettings`.
+- Keyboard shortcuts:
+  - `Ctrl+O` — choose the input folder
+  - `Ctrl+Shift+O` — choose the output folder
+  - `Ctrl+Enter` — start conversion
+  - `Esc` — cancel an active conversion
 
----
+### Command-line utility
 
-## 🖥️ Interfaces
+The `ppt2pdf` shell script provides a lightweight alternative for converting
+the presentations in a single directory. It handles filenames with spaces and
+prints success and failure counts when it finishes.
 
-| Interface | File | Description |
-|---|---|---|
-| **GTK4 GUI** | `ppt2pdf-gtk.py` | Flagship desktop GUI — works on all DEs |
-| **Bash CLI** | `ppt2pdf` | Lightweight terminal converter |
+## Recent updates
 
----
+- Reworked the desktop interface from GTK4/PyGObject to **PySide6 and Qt 6**
+  for a consistent cross-platform experience.
+- Added Windows and macOS LibreOffice discovery alongside Linux support.
+- Added isolated LibreOffice profiles for concurrent conversions, preventing
+  parallel workers from sharing the same user profile.
+- Added recursive folder scanning, drag-and-drop input, persistent folder
+  choices, keyboard shortcuts, cancellation, and per-file progress states.
+- Updated the Python dependency to `PySide6>=6.8.0`.
+- Kept local Flatpak build metadata and the application icon/desktop entry for
+  Linux packaging.
 
-## 📦 Installation & Setup
+## Installation
 
-### Option 1: Flatpak (Recommended)
+### Prerequisites
 
-Gives you a native application icon, Flatpak sandboxing, and a consistent look regardless of distro.
+Install the following before running PPT2PDF:
 
-> **Note:** LibreOffice must be installed on your host system — the Flatpak calls it via `flatpak-spawn`.
+| Requirement | Purpose |
+|---|---|
+| LibreOffice | Conversion backend |
+| Python 3.10+ | Runs the desktop application |
+| PySide6 6.8+ | Qt 6 Python bindings |
+
+LibreOffice must be available on `PATH` as `libreoffice` or `soffice` on Linux.
+On Windows and macOS, PPT2PDF also checks the standard LibreOffice install
+locations.
+
+Install LibreOffice using your platform's package manager or from the
+[official download page](https://www.libreoffice.org/download/download-libreoffice/).
+
+### Desktop application with a virtual environment
 
 ```bash
-# Clone the repo (or navigate into the directory)
+git clone https://github.com/thehamzaihsan/ppttopdf.git
 cd ppttopdf
 
-# Build and install locally (auto-detects your package manager)
-./install_flatpak.sh
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python ppt2pdf-gtk.py
 ```
 
-Once installed it will appear in your app launcher as **"PPT to PDF"**. You can also run it via:
+The included `setup_venv.sh` script can also automate environment setup on
+Debian/Ubuntu-based systems.
+
+### Flatpak packaging
+
+The repository includes a Flatpak manifest and an installation helper for
+Linux:
 
 ```bash
+./install_flatpak.sh
 flatpak run com.github.hamzaihsan.PPT2PDF
 ```
 
----
+The helper installs the GNOME 47 SDK and platform, builds the application, and
+installs it for the current user. LibreOffice is still required on the host;
+the packaged application is designed to invoke the host converter through
+`flatpak-spawn`.
 
-### Option 2: Python venv (Developers / Standalone)
+## Usage
 
-```bash
-cd ppttopdf
+### Desktop application
 
-# Set up the virtual environment (installs PyGObject etc.)
-./setup_venv.sh
+1. Launch `python ppt2pdf-gtk.py`.
+2. Choose an input folder, or drag a folder onto the window.
+3. Optionally choose a different output folder.
+4. Enable **Include subfolders** if needed.
+5. Click **Convert to PDF**.
 
-# Activate it
-source .venv/bin/activate
+LibreOffice controls the final output behavior when a PDF with the same name
+already exists in the output folder.
 
-# Launch the GTK4 app
-python3 ppt2pdf-gtk.py
-```
-
-> **libadwaita is optional.** If it's not installed on your system the app will start normally using plain GTK4 and your system theme.
-
----
-
-### Option 3: Bash CLI (Fast & Simple)
+### Command line
 
 ```bash
 chmod +x ppt2pdf
-./ppt2pdf /path/to/your/presentations
+./ppt2pdf /path/to/presentations
 ```
 
----
+The CLI scans only the specified directory (not subfolders) and writes the PDF
+files next to their source presentations.
 
-## 🔧 Prerequisites
+## Project files
 
-| Requirement | Notes |
+| File | Description |
 |---|---|
-| **LibreOffice** | The conversion backend. Install via your package manager. |
-| **GTK 4.10+** | Included in any modern GNOME/KDE desktop. |
-| **PyGObject ≥ 3.46** | Python GTK bindings — see `requirements.txt`. |
-| **libadwaita 1.x** | *Optional.* Enhances UI on GNOME; gracefully skipped on KDE/other DEs. |
+| `ppt2pdf-gtk.py` | PySide6 desktop application |
+| `ppt2pdf` | Bash command-line converter |
+| `requirements.txt` | Python dependencies |
+| `com.github.hamzaihsan.PPT2PDF.yml` | Flatpak build manifest |
+| `install_flatpak.sh` | Local Flatpak build/install helper |
+| `setup_venv.sh` | Debian/Ubuntu virtual-environment setup helper |
 
-**Installing LibreOffice:**
-
-| Distro | Command |
-|---|---|
-| Arch / CachyOS | `sudo pacman -S libreoffice-fresh` |
-| Fedora | `sudo dnf install libreoffice` |
-| Ubuntu / Debian | `sudo apt install libreoffice` |
-| openSUSE | `sudo zypper install libreoffice` |
-
----
-
-## 🖼️ Icon
-
-A custom scalable SVG icon (`com.github.hamzaihsan.PPT2PDF.svg`) is bundled for a crisp display in app launchers.
-
----
-
-## 📝 License
+## License
 
 Open source — free for personal and professional use.
